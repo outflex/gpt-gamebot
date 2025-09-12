@@ -1,8 +1,9 @@
-# GameBot v0.4 — финальная версия с минималистичным UI и подтверждением действий
+# bot.py — переработанная версия под требования (только "Кости")
+# ВАЖНО: Убедитесь, что в окружении (Railway) задана переменная TOKEN
 # Требует aiogram 3.7+
-# DB: database.json (рядом с файлом)
-# ВАЖНО: вставьте ваш токен в TOKEN перед запуском!
+# Структура DB: database.json (в той же папке)
 
+import os
 import asyncio
 import random
 import json
@@ -16,19 +17,18 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.client.bot import DefaultBotProperties
 
 # --------------------------
-# НАСТРОЙКИ
+# Настройки
 # --------------------------
-TOKEN = "8001643590:AAG93uhtCw-MwIOTXJkeGGOG7k7FjdSTeQM"  # <- Замените на ваш токен
+TOKEN = os.environ.get("TOKEN")  # <- обязательно задайте в Railway / окружении
+if not TOKEN:
+    raise RuntimeError("TOKEN environment variable is required. Set TOKEN to your bot token.")
+
 DB_PATH = Path("database.json")
-
-# Параметры игры
 DICE_ROUNDS = 6
-
-# Подтверждение действует N секунд
-CONFIRM_TTL = 60  # 60 секунд для подтверждения (нажав ещё раз)
+CONFIRM_TTL = 60  # секунды — время в течение которого подтверждение действительно
 
 # --------------------------
-# БАЗА (JSON)
+# Простая JSON база
 # --------------------------
 def load_db() -> Dict[str, Any]:
     if not DB_PATH.exists():
@@ -57,7 +57,7 @@ def save_db(data: Dict[str, Any]):
     DB_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
 
 # --------------------------
-# УТИЛИТЫ ПОЛЬЗОВАТЕЛЯ
+# Пользовательские утилиты
 # --------------------------
 def ensure_user(uid: int, name: str):
     db = load_db()
@@ -80,10 +80,10 @@ def user_label(uid: int) -> str:
     return f"{u['name']} ({u['wins']})"
 
 # --------------------------
-# ЛОББИ: создание/присоединение/выход
+# Лобби: CRUD и проверки
 # --------------------------
 def max_players(game: str) -> int:
-    return 2  # для Костей
+    return 2  # только кости
 
 def min_players(game: str) -> int:
     return 2
@@ -104,7 +104,7 @@ def create_lobby_record(game: str, creator_uid: int) -> str:
         "players": [creator_uid],
         "started": False,
         "game_state": {},
-        "last_messages": {},   # {uid_str: message_id}
+        "last_messages": {},  # {uid_str: message_id}
         "last_activity": time.time()
     }
     save_db(db)
@@ -135,12 +135,12 @@ def leave_lobby(lid: str, uid: int, penalize_if_started: bool = False) -> (bool,
         lobby["players"].remove(uid)
     if penalize_if_started and lobby.get("started", False):
         add_win(uid, -5)
-    # удалим запись о последнем сообщении этого пользователя
+    # удаляем запись о личной карточке
     try:
         lobby["last_messages"].pop(str(uid), None)
     except Exception:
         pass
-    # если пусто — удаляем лобби
+    # если осталось 0 игроков — удаляем лобби
     if len(lobby["players"]) == 0:
         del db["lobbies"][lid]
     else:
@@ -154,13 +154,12 @@ def kick_from_lobby(lid: str, by_uid: int, target_uid: int) -> (bool, str):
         return False, "Лобби не найдено"
     lobby = db["lobbies"][lid]
     if lobby["creator"] != by_uid:
-        return False, "Только создатель может выкидывать"
+        return False, "Только создатель может выгнать"
     if target_uid not in lobby["players"]:
         return False, "Игрок не в лобби"
     lobby["players"].remove(target_uid)
     lobby["last_messages"].pop(str(target_uid), None)
     lobby["last_activity"] = time.time()
-    # если пусто — удаляем лобби
     if len(lobby["players"]) == 0:
         del db["lobbies"][lid]
     save_db(db)
@@ -180,22 +179,18 @@ def user_active_created_lobby(uid: int) -> Optional[str]:
     return None
 
 # --------------------------
-# UI / форматирование
+# UI helpers: минималистично и дружелюбно
 # --------------------------
 def format_players_list(lobby: Dict[str, Any]) -> str:
     db = load_db()
     lines = []
     for p in lobby["players"]:
-        user = db["users"].get(str(p), {"name": f"User {p}", "wins": 0})
+        user = db["users"].get(str(p), {"name": f"User {p}"})
         prefix = "👑 " if p == lobby["creator"] else "• "
         lines.append(f"{prefix}{user['name']}")
     return "\n".join(lines)
 
 def lobby_overview_text(lid: str, lobby: Dict[str, Any], extra: Optional[str] = None) -> str:
-    """
-    Минималистичная дружелюбная карточка лобби.
-    extra — дополнительная строка/блок (например, приглашение бросить в раунде)
-    """
     db = load_db()
     creator_name = db["users"].get(str(lobby["creator"]), {"name": "Unknown"})["name"]
     text = (
@@ -205,7 +200,7 @@ def lobby_overview_text(lid: str, lobby: Dict[str, Any], extra: Optional[str] = 
         f"{format_players_list(lobby)}"
     )
     if not lobby.get("started", False):
-        text += "\n\n⚠️ Ожидаем старта от создателя."
+        text += "\n\n⚠️ Ожидается старт от создателя."
     else:
         text += "\n\n✅ Игра идёт."
     if extra:
@@ -213,7 +208,7 @@ def lobby_overview_text(lid: str, lobby: Dict[str, Any], extra: Optional[str] = 
     return text
 
 # --------------------------
-# клавиатуры (минималистично)
+# Кнопки / клавиатуры
 # --------------------------
 def kb_main():
     kb = InlineKeyboardBuilder()
@@ -230,8 +225,8 @@ def kb_play():
 
 def kb_create_exists(lid: str):
     kb = InlineKeyboardBuilder()
-    kb.button(text="⤴️ Перейти в моё лобби", callback_data=f"view_{lid}")
-    kb.button(text="🗑 Удалить моё лобби", callback_data=f"confirm_delete_{lid}")
+    kb.button(text="⤴️ Перейти в моё", callback_data=f"view_{lid}")
+    kb.button(text="🗑 Удалить моё", callback_data=f"confirm_delete_{lid}")
     kb.button(text="⬅️ Назад", callback_data="play")
     return kb.as_markup()
 
@@ -242,9 +237,6 @@ def kb_game_types():
     return kb.as_markup()
 
 def kb_lobby_actions(lid: str, uid: int, in_round: bool = False):
-    """
-    in_round=True заменяет стандартную карточку на карточку с кнопкой броска
-    """
     db = load_db()
     kb = InlineKeyboardBuilder()
     lobby = db["lobbies"].get(lid)
@@ -279,9 +271,9 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # --------------------------
-# Управление сообщениями лобби (универсальные функции)
+# Сообщения лобби: удерживаем одно актуальное сообщение у пользователя
 # --------------------------
-async def set_last_message(lid: str, uid: int, message_id: int):
+def set_last_message_record(lid: str, uid: int, message_id: int):
     db = load_db()
     if lid not in db["lobbies"]:
         return
@@ -289,7 +281,7 @@ async def set_last_message(lid: str, uid: int, message_id: int):
     db["lobbies"][lid]["last_activity"] = time.time()
     save_db(db)
 
-async def remove_last_message_record(lid: str, uid: int):
+def remove_last_message_record(lid: str, uid: int):
     db = load_db()
     if lid not in db["lobbies"]:
         return
@@ -301,43 +293,43 @@ async def safe_delete_message(chat_id: int, message_id: int):
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception:
-        # Игнорируем ошибки удаления (пользователь удалил сообщение вручную / запрет)
+        # Игнорируем ошибки удаления
         pass
 
 async def update_lobby_card_for_user(lid: str, uid: int, in_round: bool = False, extra: Optional[str] = None):
     """
-    Гарантирует: у пользователя будет ровно одна актуальная карточка лобби.
-    Попытка редактировать существующую — если не удаётся, удаляем старую и отправляем новую.
+    Попытка отредактировать существующую карточку у пользователя;
+    если не удалось — удаляем старую и отправляем новую (и обновляем запись).
+    Если отправить новую нельзя (пользователь не начал чат с ботом), удаляем запись.
     """
     db = load_db()
     if lid not in db["lobbies"]:
         return
     lobby = db["lobbies"][lid]
-    overview = lobby_overview_text(lid, lobby, extra=extra)
+    text = lobby_overview_text(lid, lobby, extra=extra)
     markup = kb_lobby_actions(lid, uid, in_round=in_round)
     uid_str = str(uid)
     prev_mid = lobby.get("last_messages", {}).get(uid_str)
-    # Попытаемся отредактировать
+    # Попробуем редактировать
     if prev_mid:
         try:
-            await bot.edit_message_text(overview, chat_id=uid, message_id=int(prev_mid), reply_markup=markup)
-            # успешно отредактировали — обновим activity
+            await bot.edit_message_text(text, chat_id=uid, message_id=int(prev_mid), reply_markup=markup)
             lobby["last_activity"] = time.time()
             save_db(db)
             return
         except Exception:
-            # не удалось отредактировать — попробуем удалить старое и отправить новое
+            # попытка редактирования не удалась: удалим старое (если возможно) и отправим новое
             try:
                 await safe_delete_message(uid, int(prev_mid))
             except Exception:
                 pass
-    # Отправляем новое
+    # Отправляем новое сообщение пользователю
     try:
-        msg = await bot.send_message(uid, overview, reply_markup=markup)
-        await set_last_message(lid, uid, msg.message_id)
+        msg = await bot.send_message(uid, text, reply_markup=markup)
+        set_last_message_record(lid, uid, msg.message_id)
     except Exception:
-        # не удалось отправить (например, пользователь не начал чат с ботом) — убираем запись
-        await remove_last_message_record(lid, uid)
+        # не удалось отправить — убираем запись
+        remove_last_message_record(lid, uid)
 
 async def update_all_lobby_cards(lid: str, in_round: bool = False, extra: Optional[str] = None):
     db = load_db()
@@ -351,7 +343,7 @@ async def update_all_lobby_cards(lid: str, in_round: bool = False, extra: Option
         await asyncio.gather(*tasks, return_exceptions=True)
 
 # --------------------------
-# Подтверждения (pending confirmations)
+# Подтверждения (простая реализация)
 # --------------------------
 def add_pending_confirmation(uid: int, action: str, lid: str):
     db = load_db()
@@ -369,11 +361,9 @@ def pop_pending_confirmation(uid: int) -> Optional[Dict[str, Any]]:
     if not info:
         return None
     if info.get("expires", 0) < time.time():
-        # истекло
         db["pending_confirmations"].pop(s, None)
         save_db(db)
         return None
-    # удалим и вернём
     db["pending_confirmations"].pop(s, None)
     save_db(db)
     return info
@@ -391,12 +381,12 @@ def peek_pending_confirmation(uid: int) -> Optional[Dict[str, Any]]:
     return info
 
 # --------------------------
-# Меню и хэндлеры
+# Хэндлеры — меню
 # --------------------------
 @dp.message(F.text == "/start")
 async def cmd_start(msg: Message):
     ensure_user(msg.from_user.id, msg.from_user.full_name)
-    await msg.answer(f"Привет, <b>{msg.from_user.full_name}</b>! Я — твой игровой помощник. 🎲\nВыбирай:", reply_markup=kb_main())
+    await msg.answer(f"Привет, <b>{msg.from_user.full_name}</b>! Я помогу запускать быстрые партии в Кости. 🎲\nВыбирай:", reply_markup=kb_main())
 
 @dp.callback_query(F.data == "back_main")
 async def cb_back_main(c: CallbackQuery):
@@ -411,6 +401,7 @@ async def cb_create_game(c: CallbackQuery):
     ensure_user(c.from_user.id, c.from_user.full_name)
     existing = user_active_created_lobby(c.from_user.id)
     if existing:
+        # Предлагаем перейти или удалить
         await c.message.edit_text("У вас уже есть активное лобби:", reply_markup=kb_create_exists(existing))
         return
     await c.message.edit_text("Выберите игру:", reply_markup=kb_game_types())
@@ -429,7 +420,7 @@ async def cb_leaders(c: CallbackQuery):
     await c.message.edit_text(text, reply_markup=kb_main())
 
 # --------------------------
-# CREATE LOBBY (Кости)
+# Создание лобби (Кости)
 # --------------------------
 @dp.callback_query(F.data == "create_dice")
 async def cb_create_dice(c: CallbackQuery):
@@ -440,16 +431,17 @@ async def cb_create_dice(c: CallbackQuery):
         await c.message.edit_text("У вас уже есть активное лобби:", reply_markup=kb_create_exists(existing))
         return
     lid = create_lobby_record("dice", c.from_user.id)
-    # Отправим карточку создателю и запомним message_id
+    # отправим карточку создателю (лично) и запомним id
     try:
         msg = await bot.send_message(c.from_user.id, lobby_overview_text(lid, load_db()["lobbies"][lid]), reply_markup=kb_lobby_actions(lid, c.from_user.id))
-        await set_last_message(lid, c.from_user.id, msg.message_id)
+        set_last_message_record(lid, c.from_user.id, msg.message_id)
     except Exception:
+        # если не смогли отправить — просто продолжаем
         pass
-    await c.message.edit_text(f"✅ Лобби создано — <b>Кости 🎲</b>\n🆔 <code>{lid}</code>\nЛобби было отправлено вам в личные сообщения.", reply_markup=kb_lobby_actions(lid, c.from_user.id))
+    await c.message.edit_text(f"✅ Лобби создано — <b>Кости 🎲</b>\n🆔 <code>{lid}</code>\nКарточка лобби отправлена вам в личные сообщения.", reply_markup=kb_lobby_actions(lid, c.from_user.id))
 
 # --------------------------
-# JOIN: список и присоединение
+# JOIN: показать список и присоединиться
 # --------------------------
 @dp.callback_query(F.data == "join_game")
 async def cb_list_lobbies(c: CallbackQuery):
@@ -480,44 +472,42 @@ async def cb_join_specific(c: CallbackQuery):
         await c.message.edit_text(reason, reply_markup=kb_play())
         return
 
-    # отправим карточку новому игроку и сохраним message_id
     db = load_db()
     lobby = db["lobbies"][lid]
+
+    # отправим карточку новому игроку (лично) и сохраним message_id
     try:
         msg = await bot.send_message(c.from_user.id, lobby_overview_text(lid, lobby), reply_markup=kb_lobby_actions(lid, c.from_user.id))
-        await set_last_message(lid, c.from_user.id, msg.message_id)
+        set_last_message_record(lid, c.from_user.id, msg.message_id)
     except Exception:
         pass
 
-    # сообщим в интерфейсе (коротко) и обновим карточки всех — редактирование/замещение
+    # уведомим вызывающего в интерфейсе и обновим карточки всех участников (редактирование/замена)
     await c.message.edit_text("Вы присоединились — карточка лобби отправлена в личные сообщения.", reply_markup=kb_main())
     await update_all_lobby_cards(lid)
 
 # --------------------------
-# УПРАВЛЕНИЕ/ВЫХОД/ВЫГОН (с подтверждением)
+# Управление / выход / кик (с подтверждением через alert)
 # --------------------------
 @dp.callback_query(F.data.startswith("leave_in_game_"))
 async def cb_leave_in_game(c: CallbackQuery):
-    # второй случай — выход в ходе игры (штраф)
     lid = c.data.split("_", 3)[3]
-    # проверка подтверждения
+    # подтверждение через pending
     pending = peek_pending_confirmation(c.from_user.id)
     if not pending or pending.get("action") != "leave_in_game" or pending.get("lid") != lid:
-        # ставим pending и просим подтвердить (alert)
         add_pending_confirmation(c.from_user.id, "leave_in_game", lid)
-        await c.answer("Подтвердите выход: нажмите эту кнопку ещё раз в течение 60 с.", show_alert=True)
+        await c.answer("Подтвердите выход (штраф -5): нажмите ещё раз в течение 60 с.", show_alert=True)
         return
-    # подтверждение прошло — удаляем pending и выполняем
     pop_pending_confirmation(c.from_user.id)
+    # выполняем выход
     db = load_db()
     if lid not in db["lobbies"]:
         await c.answer("Лобби не найдено", show_alert=True)
         await c.message.edit_text("Лобби не найдено", reply_markup=kb_main())
         return
-    # штраф -5
     add_win(c.from_user.id, -5)
     leave_lobby(lid, c.from_user.id, penalize_if_started=False)
-    # уведомим остальных и удалим лобби (так как матч прерывается)
+    # уведомим остальных и удалим лобби (матч прерван)
     db = load_db()
     if lid in db["lobbies"]:
         lobby = db["lobbies"][lid]
@@ -531,41 +521,21 @@ async def cb_leave_in_game(c: CallbackQuery):
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         delete_lobby(lid)
-    # удалим карточку у пользователя (если есть)
-    try:
-        # пытаемся удалить их last_message
-        db2 = load_db()
-        if lid in db2["lobbies"]:
-            # если ещё есть — удаление handled above; иначе это ok
-            pass
-    except Exception:
-        pass
     await c.answer("Вы вышли из матча. -5 побед", show_alert=False)
     await c.message.edit_text("Вы вышли из матча. -5 побед", reply_markup=kb_main())
 
 @dp.callback_query(F.data.startswith("leave_"))
 async def cb_leave(c: CallbackQuery):
     lid = c.data.split("_", 1)[1]
-    # pending confirm pattern
     pending = peek_pending_confirmation(c.from_user.id)
     if not pending or pending.get("action") != "leave" or pending.get("lid") != lid:
         add_pending_confirmation(c.from_user.id, "leave", lid)
-        await c.answer("Подтвердите выход: нажмите эту кнопку ещё раз в течение 60 с.", show_alert=True)
+        await c.answer("Подтвердите выход: нажмите ещё раз в течение 60 с.", show_alert=True)
         return
-    # подтверждение
     pop_pending_confirmation(c.from_user.id)
     ok, reason = leave_lobby(lid, c.from_user.id, penalize_if_started=False)
     if ok:
-        # удалим личную карточку пользователя (если есть)
-        try:
-            # попытка удалить message
-            db = load_db()
-            lobby = db.get("lobbies", {}).get(lid)
-            # если лобби удалено, возможен KeyError — безопасно обрабатываем
-            # удаление их last_message уже сделано в leave_lobby
-            pass
-        except Exception:
-            pass
+        # обновляем карточки оставшихся (удаление/редактирование)
         await update_all_lobby_cards(lid)
         await c.answer("Вы покинули лобби", show_alert=False)
         await c.message.edit_text("Вы покинули лобби. Возврат в меню.", reply_markup=kb_main())
@@ -596,13 +566,11 @@ async def cb_manage(c: CallbackQuery):
 async def cb_kick(c: CallbackQuery):
     _, lid, pid_str = c.data.split("_", 2)
     pid = int(pid_str)
-    # Подтверждение для kick
     pending = peek_pending_confirmation(c.from_user.id)
     if not pending or pending.get("action") != f"kick_{pid}" or pending.get("lid") != lid:
         add_pending_confirmation(c.from_user.id, f"kick_{pid}", lid)
         await c.answer("Подтвердите удаление игрока: нажмите кнопку ещё раз в течение 60 с.", show_alert=True)
         return
-    # подтверждение прошло
     pop_pending_confirmation(c.from_user.id)
     ok, reason = kick_from_lobby(lid, c.from_user.id, pid)
     if ok:
@@ -633,7 +601,7 @@ async def cb_confirm_delete(c: CallbackQuery):
     db = load_db()
     if lid not in db["lobbies"]:
         await c.answer("Лобби не найдено", show_alert=True)
-        await c.message.edit_text("Лобби не найдено", reply_markup=kb_play())
+        await c.message.edit_text("Лобби не найдено.", reply_markup=kb_play())
         return
     lobby = db["lobbies"][lid]
     if c.from_user.id != lobby["creator"]:
@@ -653,16 +621,15 @@ async def cb_delete(c: CallbackQuery):
     if c.from_user.id != lobby["creator"]:
         await c.answer("Только создатель может удалить", show_alert=True)
         return
-    # подтверждение через pending
     pending = peek_pending_confirmation(c.from_user.id)
     if not pending or pending.get("action") != "delete" or pending.get("lid") != lid:
         add_pending_confirmation(c.from_user.id, "delete", lid)
         await c.answer("Подтвердите удаление: нажмите ещё раз в течение 60 с.", show_alert=True)
         return
     pop_pending_confirmation(c.from_user.id)
-    # уведомим участников
-    tasks = []
+    # уведомляем участников
     text = f"🗑 Лобби {lid} было удалено создателем."
+    tasks = []
     for pid in list(lobby["players"]):
         try:
             tasks.append(asyncio.create_task(bot.send_message(pid, text, reply_markup=kb_main())))
@@ -674,7 +641,7 @@ async def cb_delete(c: CallbackQuery):
     await c.message.edit_text("Лобби удалено.", reply_markup=kb_main())
 
 # --------------------------
-# СТАРТ ИГРЫ
+# Старт игры
 # --------------------------
 @dp.callback_query(F.data.startswith("start_"))
 async def cb_start_game(c: CallbackQuery):
@@ -693,29 +660,24 @@ async def cb_start_game(c: CallbackQuery):
     if len(lobby["players"]) > max_players(lobby["game"]):
         await c.answer("Слишком много игроков для этой игры", show_alert=True)
         return
-    # инициализация
+    # инициализация состояния
     lobby["started"] = True
     lobby["game_state"] = {
         "current_round": 1,
         "rounds_total": DICE_ROUNDS,
-        "round_rolls": {},        # {round: {uid: value}}
+        "round_rolls": {},  # {round: {uid: value}}
         "match_scores": {str(p): 0 for p in lobby["players"]}
     }
     lobby["last_activity"] = time.time()
     save_db(db)
-    # обновим карточки у всех, показывая приглашение к броску
+    # обновляем карточки участников с приглашением бросить (редактируем / заменяем)
     await update_all_lobby_cards(lid, in_round=True, extra=f"<b>Раунд 1/{DICE_ROUNDS}</b>\nНажмите «🎲 Бросить»")
-    # игра
     asyncio.create_task(announce_dice_round(lid))
 
 # --------------------------
-# ИГРА: КОСТИ
+# Игра: Кости
 # --------------------------
 async def announce_dice_round(lid: str):
-    """
-    Для каждого раунда мы редактируем карточку лобби у игроков, чтобы они видели приглашение
-    и кнопку «🎲 Бросить» — таким образом не создаются новые "лишние" сообщения.
-    """
     db = load_db()
     if lid not in db["lobbies"]:
         return
@@ -749,7 +711,7 @@ async def cb_dice_roll(c: CallbackQuery):
     if str(uid) in gs["round_rolls"][rkey]:
         await c.answer("Вы уже бросали в этом раунде", show_alert=True)
         return
-    # бросок: предпочтительно send_dice (анимация), но если не удаётся — fallback random
+    # бросок: пробуем send_dice (анимация), если нет прав — fallback random
     try:
         msg = await bot.send_dice(uid, emoji="🎲")
         value = msg.dice.value
@@ -759,7 +721,7 @@ async def cb_dice_roll(c: CallbackQuery):
     lobby["last_activity"] = time.time()
     save_db(db)
     await c.answer(f"Вы бросили: {value}", show_alert=False)
-    # если все бросили — подводим итоги (и снова редактируем карточки, а не создаём тонны сообщений)
+    # если все бросили — подведение итогов
     if len(gs["round_rolls"][rkey]) >= len(lobby["players"]):
         rolls = gs["round_rolls"][rkey]
         max_val = max(rolls.values())
@@ -770,12 +732,12 @@ async def cb_dice_roll(c: CallbackQuery):
         else:
             for pid in winners:
                 gs["match_scores"][str(pid)] += 1
-            round_result = f"🤝 Раунд {r}: ничья! (макс {max_val}) — +1 всем"
-        # формируем аккуратный итог раунда (коротко) и отредактируем карточки (чтобы показать итоги)
-        score_text = "🔢 Счёт:\n"
+            round_result = f"🤝 Раунд {r}: ничья! (макс {max_val}) — всем +1"
+        # общий счёт
+        score_text = "🔢 Счёт матча:\n"
         for p in lobby["players"]:
             score_text += f"- {load_db()['users'][str(p)]['name']}: {gs['match_scores'][str(p)]}\n"
-        # вместо множества сообщений — редактируем карточки (extra)
+        # отредактируем карточки, чтобы показать краткий итог (чтобы не спамить)
         extra = f"Раунд {r} завершён.\n{round_result}\n\n{score_text}"
         await update_all_lobby_cards(lid, in_round=False, extra=extra)
         # следующий раунд или конец
@@ -786,7 +748,6 @@ async def cb_dice_roll(c: CallbackQuery):
             await finish_dice_match(lid)
             return
         else:
-            # небольшой таймаут перед следующим раундом, затем приглашение к следующему раунду
             await asyncio.sleep(1)
             await announce_dice_round(lid)
     else:
@@ -811,28 +772,26 @@ async def finish_dice_match(lid: str):
         for p in winners:
             add_win(p, 1)
         names = ", ".join([load_db()['users'][str(p)]['name'] for p in winners])
-        result_text = f"🤝 Ничья между: {names}. Всем +1 победа"
-    final_scores_text = "Итог:\n" + "\n".join([f"- {load_db()['users'][str(p)]['name']}: {scores[p]}" for p in players])
-    # отправим финал кратко каждому через их карточку (и сбросим/удалим лобби)
+        result_text = f"🤝 Ничья между: {names}. Всем начислена +1 победа"
+    final_scores_text = "Итоговый счёт:\n" + "\n".join([f"- {load_db()['users'][str(p)]['name']}: {scores[p]}" for p in players])
     tasks = []
     for pid in players:
         try:
-            # отправим финальное сообщение (лично) — но не мешаем карточкам
             tasks.append(asyncio.create_task(bot.send_message(pid, f"{result_text}\n\n{final_scores_text}", reply_markup=kb_main())))
         except Exception:
             pass
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
-    # удаляем лобби — всё чисто
+    # удаляем лобби (требование: лобби удаляется сразу после окончания)
     delete_lobby(lid)
 
 # --------------------------
-# fallback — любой текст
+# Фоллбэк на любые текстовые сообщения
 # --------------------------
 @dp.message()
 async def fallback(msg: Message):
     ensure_user(msg.from_user.id, msg.from_user.full_name)
-    await msg.answer("Нажмите кнопку в меню:", reply_markup=kb_main())
+    await msg.answer("Нажми кнопку в меню, чтобы начать игру.", reply_markup=kb_main())
 
 # --------------------------
 # Запуск
