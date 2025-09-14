@@ -20,10 +20,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.client.bot import DefaultBotProperties
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-import os
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-
 
 # --------------------------
 # НАСТРОЙКИ
