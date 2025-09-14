@@ -1,0 +1,148 @@
+{
+    "users": {
+        "978199912": {
+            "name": "ᅠ ᅠJohn Doe",
+            "balance": 95025685,
+            "locked": 0,
+            "games": 1,
+            "wins": 1,
+            "dailyBonusClaimed": true,
+            "lastBonusTimestamp": 1757836424,
+            "slot_wins": 171241200,
+            "slot_jackpots": 2
+        },
+        "1370108883": {
+            "name": "Катюня ྀི",
+            "balance": 1000000,
+            "locked": 0,
+            "games": 0,
+            "wins": 0,
+            "dailyBonusClaimed": true,
+            "lastBonusTimestamp": 1757836433,
+            "slot_wins": 11200
+        },
+        "829029110": {
+            "name": "солнечный поцелуй",
+            "balance": 100000,
+            "locked": 0,
+            "games": 0,
+            "wins": 0,
+            "dailyBonusClaimed": true,
+            "lastBonusTimestamp": 1757836389,
+            "slot_wins": 43100
+        },
+        "7392962449": {
+            "name": "🫆",
+            "balance": 6468,
+            "locked": 0,
+            "games": 0,
+            "wins": 0,
+            "dailyBonusClaimed": true,
+            "lastBonusTimestamp": 1757836390
+        },
+        "551536315": {
+            "name": "игорь игрок",
+            "balance": 9000,
+            "locked": 0,
+            "games": 2,
+            "wins": 0,
+            "dailyBonusClaimed": true,
+            "lastBonusTimestamp": 1757840543,
+            "slot_wins": 1333200,
+            "slot_jackpots": 1
+        },
+        "632991386": {
+            "name": "sonя",
+            "balance": 17846,
+            "locked": 0,
+            "games": 1,
+            "wins": 1,
+            "dailyBonusClaimed": true,
+            "lastBonusTimestamp": 1757841576,
+            "slot_wins": 0,
+            "slot_jackpots": 0
+        },
+        "1685699921": {
+            "name": "GG Nig",
+            "balance": 516530992,
+            "locked": 0,
+            "games": 0,
+            "wins": 0,
+            "dailyBonusClaimed": true,
+            "lastBonusTimestamp": 1757844382,
+            "slot_wins": 713775000,
+            "slot_jackpots": 12
+        },
+        "1109672392": {
+            "name": "ㅤ ㅤ ㅤ ㅤ ㅤ",
+            "balance": 1000,
+            "locked": 0,
+            "games": 0,
+            "wins": 0,
+            "dailyBonusClaimed": false,
+            "lastBonusTimestamp": null,
+            "slot_wins": 0,
+            "slot_jackpots": 0
+        },
+        "749847345": {
+            "name": "Денис",
+            "balance": 1000,
+            "locked": 0,
+            "games": 0,
+            "wins": 0,
+            "dailyBonusClaimed": false,
+            "lastBonusTimestamp": null,
+            "slot_wins": 0,
+            "slot_jackpots": 0
+        }
+    },
+    "lobbies": {
+        "852001": {
+            "name": "писло",
+            "game": "dice",
+            "creator": 551536315,
+            "players": [
+                551536315
+            ],
+            "started": false,
+            "bet": 100,
+            "bet_locked": false,
+            "game_state": {}
+        }
+    },
+    "bet_history": [
+        {
+            "userId": 978199912,
+            "betAmount": 10000,
+            "opponentId": 551536315,
+            "outcome": "win",
+            "profit": 8000,
+            "date": "2025-09-14T09:09:55.628076Z"
+        },
+        {
+            "userId": 551536315,
+            "betAmount": 10000,
+            "opponentId": 978199912,
+            "outcome": "loss",
+            "profit": -10000,
+            "date": "2025-09-14T09:09:55.628634Z"
+        },
+        {
+            "userId": 632991386,
+            "betAmount": 100,
+            "opponentId": 551536315,
+            "outcome": "win",
+            "profit": 80,
+            "date": "2025-09-14T09:19:20.606229Z"
+        },
+        {
+            "userId": 551536315,
+            "betAmount": 100,
+            "opponentId": 632991386,
+            "outcome": "loss",
+            "profit": -100,
+            "date": "2025-09-14T09:19:20.607257Z"
+        }
+    ],
+    "house_balance": 9100050
+}
